@@ -13,6 +13,7 @@ int Relay3 = 0;
 int Relay4 ;
 const char* ssid = "BananenBoot";
 const char* password = "tp0Afvj7QxaASGa52cnZsfg25x3";
+bool loop_bool = false;
 
 const int led = LED_BUILTIN;
 
@@ -25,7 +26,7 @@ boolean workingState = 0;
 //const long interval = 1000;
 
 
-int ipnr = 102;
+int ipnr = 103;
 
 int  values_relay_1  [1000];
 std::vector<int> values_relay_2;
@@ -49,6 +50,9 @@ Timer t1;
 Timer t2;
 Timer t3;
 Timer t4;
+
+Timer t5;
+
 int event_relay_1;
 int event_relay_2;
 int event_relay_3;
@@ -101,8 +105,9 @@ void setup(void) {
     Serial.println("MDNS responder started");
   }
 
-  server.on("/start", start);
+  server.on("/start", starten);
   server.on("/stop", stoppen);
+  server.on("/actief", activeren);
 
   server.on("/info", info);
   server.on("/test-settings", testSettings);
@@ -119,6 +124,11 @@ void setup(void) {
 
   aanmelden();
   t0.every(10000, aanmelden);
+
+  int start_over_after_minutes = 10;
+  long start_over_after_millis = 1000 * 60 * start_over_after_minutes;
+  t5.every(start_over_after_millis, startOver);
+
 }
 
 void info() {
@@ -126,11 +136,11 @@ void info() {
   state_relay_1 = digitalRead(Relay1);
   state +=   state_relay_1;
 
-  state += "\nRelay 2:";
+  state = "Relay 2:";
   state_relay_2 = digitalRead(Relay2);
   state +=   state_relay_2;
 
-  state += "\nRelay 3:";
+  state = "Relay 3:";
   state_relay_3 = digitalRead(Relay3);
   state +=   state_relay_3;
   Serial.println(state);
@@ -162,10 +172,12 @@ void loop(void) {
   t3.update();
   t4.update();
 
-
+  t5.update();
 
 
 }
+
+
 
 void parseData(bool test = 1) {
   std::vector<int> values_relay_1;
@@ -174,15 +186,28 @@ void parseData(bool test = 1) {
   std::vector<int> values_relay_4;
 
 
-
-
+  String payload = "[{\"id\": 102, \"loop\": true, \"relays\":"\
+  "[{\"id\": 1, \"program\": [1, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120,480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 1, 1] },"\
+  " {\"id\": 2, \"program\": [1, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120,480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 1, 1]},"\
+  " {\"id\": 3, \"program\": [1, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120,480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 1, 1] }] }, "\
+  " {\"id\": 103, \"loop\": true, \"relays\": "\
+  "[{\"id\": 1, \"program\": [1, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120,480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 1, 1] },"\
+  " {\"id\": 2, \"program\": [1, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120,480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 1, 1] },"\
+  " {\"id\": 3, \"program\": [1, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120,480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 1, 1] }] },"\
+  " {\"id\": 104, \"loop\": true, \"relays\": "\
+  "[{\"id\": 1, \"program\": [1, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120,480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 1, 1] },"\
+  " {\"id\": 2, \"program\": [1, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120,480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 1, 1] },"\
+  " {\"id\": 3, \"program\": [1, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120,480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 1, 1] }] },"\
+  " {\"id\": 105, \"loop\": true, \"relays\":"\
+  "[{\"id\": 1, \"program\": [1, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120,480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 1, 1] }, "\
+  " {\"id\": 2, \"program\": [1, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120,480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 1, 1] },"\
+  " {\"id\": 3, \"program\": [1, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120,480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 120, 480, 1, 1] }] } ]";
   DynamicJsonDocument doc(10240);
-  DeserializationError error = deserializeJson(doc, server.arg(0));
+  DeserializationError error = deserializeJson(doc, payload);
   if (error) {
 
     Serial.print(F("deserializeJson() failed: "));
     Serial.println(error.c_str());
-    Serial.println(server.arg(0));
     server.send(400, "text/plain", error.c_str());
 
     return;
@@ -192,7 +217,7 @@ void parseData(bool test = 1) {
     if (id == ipnr) {
       Serial.println(id);
 
-      bool loop = doc[i]["loop"];
+      loop_bool = doc[i]["loop"];
 
       for (uint8_t j = 0; j < 4; j++) {
 
@@ -298,17 +323,19 @@ void parseData(bool test = 1) {
 
 
 }
-//
-//void allRelayLow() {
-//  if (workingState > 0 ) {
-//    digitalWrite(Relay1, LOW );
-//    digitalWrite(Relay2, LOW );
-//    digitalWrite(Relay3, LOW );
-//    Serial.println("dasnce1");
-//  }
-//
-//}
 
+
+void programma() {
+
+}
+void startOver() {
+  if (loop_bool) {
+    Serial.println("Nog een keer!");
+    stoppen();
+    starten();
+  }
+
+}
 void Relay1Low() {
   if (workingState > 0 ) {
     digitalWrite(Relay1, LOW );
@@ -333,36 +360,28 @@ void Relay1High() {
   digitalWrite(Relay1, HIGH );
 }
 void Relay2High() {
-
   digitalWrite(Relay2, HIGH );
 }
 void Relay3High() {
-
   digitalWrite(Relay3, HIGH );
 }
 void Relay4High() {
-
   digitalWrite(Relay4, HIGH );
 }
-//void allRelayChangeState() {
-//    if (workingState > 0 ) {
-//  digitalWrite(Relay1, state_relay_1 );
-//  digitalWrite(Relay2, state_relay_2 );
-//  digitalWrite(Relay3, state_relay_3 );
-//  digitalWrite(Relay4, state_relay_4 );
-//  //  }
-//}
+
 
 void testSettings() {
   parseData();
 
 }
-void start() {
-  //  server.send(200, "text/plain", "starten");
+
+void starten() {
+  server.send(200, "text/plain", "starten");
   Serial.println("start");
   workingState = 1;
 
   parseData(0);
+  //  programma();
 
 }
 
@@ -373,9 +392,22 @@ void stoppen() {
   digitalWrite(Relay1, HIGH );
   digitalWrite(Relay2, HIGH );
   digitalWrite(Relay3, HIGH );
+  digitalWrite(Relay4, HIGH );
+
   t1.stop(event_relay_1);
   t2.stop(event_relay_2);
   t3.stop(event_relay_3);
   t4.stop(event_relay_4);
+
+}
+
+void activeren() {
+  server.send(200, "text/plain", "activeren");
+  Serial.println("actief");
+  workingState = 1;
+  digitalWrite(Relay1, LOW );
+  digitalWrite(Relay2, LOW );
+  digitalWrite(Relay3, LOW );
+  digitalWrite(Relay4, LOW );
 
 }
