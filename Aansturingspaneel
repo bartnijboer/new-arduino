@@ -1,0 +1,333 @@
+#include <Bounce2.h>
+#include <ESP8266WiFi.h>
+#include <WiFiClient.h>
+#include <ESP8266WebServer.h>
+#include <ESP8266mDNS.h>
+#include <ESP8266HTTPClient.h>
+#include <Timer.h>  //https://github.com/JChristensen/Timer/archive/master.zip
+
+
+#define AANTALWERKEN 4
+
+const char* ssid = "BananenBoot";
+const char* password = "tp0Afvj7QxaASGa52cnZsfg25x3";
+bool loop_bool = false;
+
+
+Timer t5;
+
+Bounce  bouncer1  = Bounce();
+Bounce  bouncer2  = Bounce();
+Bounce  bouncer3  = Bounce();
+
+//const int led1 = 14;
+//const int led2 = 12;
+//const int led3 = 13;
+//const int led4 = 15;
+const int wifiVerbondenLed = 16;
+const int button = 5;
+const int buttonActief = 2;
+const int buttonStop = 4;
+const int syncLed = 0;
+
+long druktime = 1;
+long druktimestop = 1;
+long druktimeactief = 1;
+bool workingState = false;
+
+enum staat {
+  AAN = 0
+  , UIT = 1
+  , NULPUNT = 2
+};
+typedef struct werk {
+  String naam;
+  String ip;
+  bool is_klaar;
+  bool is_verbonden;
+  staat staat_werk;
+  int controle_led;
+};
+
+werk werken[AANTALWERKEN];
+
+werk werk1{
+  "werk 1" //naam
+  , "192.168.1.102" //ip
+  , false //is_klaar
+  , false // is verbonden
+  , UIT // staat
+  , 14 //pin nummer led
+};
+
+werk werk2{
+  "werk 2" //naam
+  , "192.168.1.103" //ip
+  , false //is_klaar
+  , false // is verbonden
+  , UIT // staat
+  , 12 //pin nummer led
+};
+
+werk werk3{
+  "werk 3" //naam
+  , "192.168.1.104" //ip
+  , false //is_klaar
+  , false // is verbonden
+  , UIT // staat
+  , 13 //pin nummer led
+};
+
+werk werk4{
+  "werk 4" //naam
+  , "192.168.1.105" //ip
+  , false //is_klaar
+  , false // is verbonden
+  , UIT // staat
+  , 15 //pin nummer led
+};
+
+ESP8266WebServer server(80);
+
+IPAddress ip(192, 168, 1, 101);
+IPAddress gateway(192, 168, 1, 254);
+IPAddress subnet(255, 255, 255, 0);
+
+int ip2 = (192, 168, 1, 102);
+int ip3 = (192, 168, 1, 103);
+int ip4 = (192, 168, 1, 104);
+int ip5 = (192, 168, 1, 105);
+
+void handleRoot() {
+}
+
+void handleNotFound() {
+  String message = "File Not Found\n\n";
+  message += "URI: ";
+  message += server.uri();
+  message += "\nMethod: ";
+  message += (server.method() == HTTP_GET) ? "GET" : "POST";
+  message += "\nArguments: ";
+  message += server.args();
+  message += "\n";
+  for (uint8_t i = 0; i < server.args(); i++) {
+    message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
+  }
+  server.send(404, "text/plain", message);
+}
+
+void aanmelden() {
+  Serial.print("er is een aanmelding\naantal args:");
+  bool er_is_iets_gevonden = false;
+  Serial.println(server.args());
+
+  String ip = server.arg("plain");
+
+  for (uint8_t j = 0; j < AANTALWERKEN; j++) {
+    if (werken[j].ip == ip) {
+      werken[j].is_verbonden = true;
+      Serial.print("werk: ");
+      Serial.print(werken[j].naam);
+      Serial.println(" is verbonden");
+      er_is_iets_gevonden = true;
+    }
+  }
+
+  if (er_is_iets_gevonden) {
+    server.send(200, "text/plain", "oke");
+  }
+  else {
+    Serial.println("er is geen bijpassend werk gevonden");
+    server.send(404, "text/plain", "werk niet gevonden");
+  }
+}
+
+void setup(void) {
+  pinMode (button, INPUT);
+  pinMode (buttonStop, INPUT_PULLUP);
+  pinMode (buttonActief, INPUT);
+  pinMode (syncLed, OUTPUT);
+
+  bouncer1.attach( button );
+  bouncer1.interval(10);
+
+  bouncer2.attach( buttonStop );
+  bouncer2.interval(10);
+
+  bouncer3.attach( buttonActief );
+  bouncer3.interval(10);
+
+  werken[0] = werk1;
+  werken[1] = werk2;
+  werken[2] = werk3;
+  werken[3] = werk4;
+
+
+  for (uint8_t j = 0; j < AANTALWERKEN; j++)
+    pinMode(werken[j].controle_led, OUTPUT);
+  pinMode(wifiVerbondenLed, OUTPUT);
+
+
+
+  Serial.begin(115200);
+  Serial.println("hallo");
+  delay(10);
+
+  WiFi.config(ip, gateway, subnet);
+
+  WiFi.begin(ssid, password);
+  Serial.println("");
+
+
+
+  Serial.println("");
+  Serial.print("Connected to ");
+
+  // Start the server
+  server.begin();
+  Serial.println("Server started");
+
+  // Print the IP address
+  Serial.println(ssid);
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+
+  if (MDNS.begin("esp8266"))
+    Serial.println("MDNS responder started");
+
+  server.on("/aanmelden", aanmelden);
+
+  server.on("/inline", []() {
+    server.send(200, "text/plain", "this works as well");
+  });
+
+  server.onNotFound(handleNotFound);
+  server.begin();
+  Serial.println("HTTP server started");
+
+  int start_over_after_minutes = 1;
+  long start_over_after_millis = 1000 * 60 * start_over_after_minutes;
+  t5.every(start_over_after_millis, startOver);
+  
+}
+
+
+
+void loop(void) {
+  server.handleClient();
+  digitalWrite(wifiVerbondenLed, (WiFi.status() == WL_CONNECTED));
+  t5.update();
+  
+  if (workingState == true){
+    digitalWrite(syncLed, HIGH);
+  }
+  else{ digitalWrite(syncLed,LOW);
+  }
+  
+  for (uint8_t j = 0; j < AANTALWERKEN; j++)
+    digitalWrite(werken[j].controle_led, werken[j].is_verbonden);
+
+
+  if (digitalRead(button) &&  millis() - druktime > 1000)
+    start();
+
+
+
+  if (digitalRead(buttonStop) &&  millis() - druktimestop > 1000)
+    stoppen();
+  
+  if (digitalRead(buttonActief) == LOW && millis() - druktimeactief > 1000)
+    activeren();
+
+}
+
+void startOver() {
+  if (workingState == true) {
+    Serial.println("Nog een keer!");
+    stoppen();
+    start();
+  }
+}
+
+void start() {
+  Serial.println("\n\nSTART knop ingedrukt");
+  HTTPClient http;
+
+  for (uint8_t j = 0; j < AANTALWERKEN; j++) {
+    if (werken[j].is_verbonden) {
+      String call = "http://";
+      call += werken[j].ip;
+      call += "/start";
+//------------------------------------------------------------------------------------------------------
+      http.begin(call); //HTTP
+      String payload = "[{\"id\": 102, \"loop\": true, \"relays\": [{\"id\": 1, \"program\": [1, 1] }, {\"id\": 2, \"program\": [1, 1]}, {\"id\": 3, \"program\": [1, 1] }] }, {\"id\": 103, \"loop\": true, \"relays\": [{\"id\": 1, \"program\": [1, 1] }, {\"id\": 2, \"program\": [1, 1] }, {\"id\": 3, \"program\": [1, 1] }] }, {\"id\": 104, \"loop\": true, \"relays\": [{\"id\": 1, \"program\": [1, 1] }, {\"id\": 2, \"program\": [1, 1] }, {\"id\": 3, \"program\": [1, 1] }] }, {\"id\": 105, \"loop\": true, \"relays\": [{\"id\": 1, \"program\": [1, 1] }, {\"id\": 2, \"program\": [1, 1] }, {\"id\": 3, \"program\": [1, 1] }] } ]";
+      int httpC1ode = http.POST("");
+//------------------------------------------------------------------------------------------------------
+      Serial.print("code is:");
+      Serial.println(httpC1ode);
+      Serial.println();
+      if (httpC1ode == -1) {
+        werken[j].is_verbonden = false;
+      }
+      http.end();
+    }
+  }
+  druktime = millis();
+  workingState = true;
+
+}
+
+void stoppen() {
+  Serial.println("\n\nSTOP knop ingedrukt");
+
+  HTTPClient http;
+
+  for (uint8_t j = 0; j < AANTALWERKEN; j++) {
+    if (werken[j].is_verbonden) {
+      String call = "http://";
+      call += werken[j].ip;
+      call += "/stop";
+
+      http.begin(call); //HTTP
+      int httpC1ode = http.GET();
+
+      Serial.print("code is:");
+      Serial.println(httpC1ode);
+      Serial.println();
+      if (httpC1ode == -1) {
+        werken[j].is_verbonden = false;
+      }
+      http.end();
+    }
+  }
+
+  druktimestop = millis();
+  workingState = false;
+}
+
+void activeren() {
+  Serial.println("\n\nACTIEF knop ingedrukt");
+
+  HTTPClient http;
+
+  for (uint8_t j = 0; j < AANTALWERKEN; j++) {
+    if (werken[j].is_verbonden) {
+      String call = "http://";
+      call += werken[j].ip;
+      call += "/actief";
+
+      http.begin(call); //HTTP
+      int httpC1ode = http.GET();
+
+      Serial.print("code is:");
+      Serial.println(httpC1ode);
+      Serial.println();
+      if (httpC1ode == -1) {
+        werken[j].is_verbonden = false;
+      }
+      http.end();
+    }
+  }
+
+  druktimeactief = millis();
+}
